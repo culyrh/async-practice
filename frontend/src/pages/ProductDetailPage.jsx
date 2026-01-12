@@ -21,6 +21,24 @@ function ProductDetailPage() {
     checkUser();
   }, [id]);
 
+  // 품절 상태일 때 투표수 자동 갱신 (폴링)
+  useEffect(() => {
+    let intervalId;
+    
+    // 상품이 품절 상태일 때만 5초마다 투표수 갱신
+    if (product && (product.status === 'OUT_OF_STOCK' || product.stock === 0 || !product.stock)) {
+      intervalId = setInterval(() => {
+        loadRestockVoteCount();
+      }, 5000); // 5초마다 갱신
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [product?.status, product?.stock, id]);
+
   const checkUser = async () => {
     const token = localStorage.getItem('accessToken');
     if (token) {
@@ -33,12 +51,21 @@ function ProductDetailPage() {
     }
   };
 
+  /**
+  * 수정: 상품 로딩 시 재입고된 상품은 투표수를 0으로 표시
+  */
   const loadProduct = async () => {
     try {
       setLoading(true);
       const data = await apiService.getProduct(id);
       setProduct(data);
       setError('');
+    
+      // 재입고된 상품이면 투표수를 명시적으로 0으로 설정
+      if (data.status === 'ACTIVE' && data.stock > 0) {
+        setRestockVoteCount(0);
+        console.log('재입고된 상품 - 투표수 0으로 리셋');
+      }
     } catch (err) {
       setError('상품을 불러오는데 실패했습니다: ' + err.message);
     } finally {
@@ -55,17 +82,46 @@ function ProductDetailPage() {
     }
   };
 
+  /**
+  * 수정: Redis 기반 투표수 조회로 변경
+  * 재입고 시 즉시 0으로 반영되도록 개선
+  */
   const loadRestockVoteCount = async () => {
     try {
-      // 백엔드에 재입고 투표 수를 가져오는 API가 있다면 사용
-      // 현재는 투표 목록의 totalElements를 사용
-      const response = await fetch(`http://54.206.243.31:8080/api/restock-votes/products/${id}?page=0&size=1`);
+      // 옵션 1: Redis API 사용 (권장)
+      const response = await fetch(
+        `http://54.206.243.31:8080/api/restock-votes/products/${id}/count`
+      );
+    
       if (response.ok) {
-        const data = await response.json();
-        setRestockVoteCount(data.totalElements || 0);
+        const count = await response.json();
+      
+        // 투표수가 변경된 경우에만 상태 업데이트
+        if (count !== restockVoteCount) {
+          setRestockVoteCount(count);
+          console.log('재입고 투표수 업데이트 (Redis):', count);
+        }
       }
     } catch (err) {
       console.error('재입고 투표 수 로딩 실패:', err);
+    
+      // Redis API 실패 시 기존 DB 조회 방식으로 폴백
+      try {
+        const response = await fetch(
+          `http://54.206.243.31:8080/api/restock-votes/products/${id}?page=0&size=1`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          const newCount = data.totalElements || 0;
+        
+          if (newCount !== restockVoteCount) {
+            setRestockVoteCount(newCount);
+            console.log('재입고 투표수 업데이트 (DB fallback):', newCount);
+          }
+        }
+      } catch (fallbackErr) {
+        console.error('DB 조회도 실패:', fallbackErr);
+      }
     }
   };
 
@@ -122,9 +178,9 @@ function ProductDetailPage() {
     }
 
     try {
-      await apiService.voteRestock(product.id);
+      await apiService.voteForRestock(product.id);
       alert('재입고 투표가 완료되었습니다!');
-      loadRestockVoteCount(); // 투표 수 새로고침
+      loadRestockVoteCount(); // 투표 수 즉시 새로고침
     } catch (err) {
       if (err.code === 'DUPLICATE_VOTE') {
         alert('이미 투표하셨습니다.');
@@ -142,7 +198,7 @@ function ProductDetailPage() {
     }
 
     try {
-      await apiService.requestRestockNotification(product.id);
+      await apiService.subscribeRestock(product.id);
       alert('재입고 알림 신청이 완료되었습니다!');
     } catch (err) {
       alert('재입고 알림 신청 실패: ' + err.message);
@@ -305,11 +361,15 @@ function ProductDetailPage() {
                     {'⭐'.repeat(review.rating)}
                   </div>
                   <div style={styles.reviewDate}>
-                    {new Date(review.createdAt).toLocaleDateString()}
+                    {new Date(review.createdAt).toLocaleDateString('ko-KR')}
                   </div>
                 </div>
-                <div style={styles.reviewAuthor}>{review.userName}</div>
-                <div style={styles.reviewComment}>{review.comment}</div>
+                <div style={styles.reviewAuthor}>
+                  {review.user?.name || '익명'}
+                </div>
+                <div style={styles.reviewComment}>
+                  {review.comment}
+                </div>
               </div>
             ))}
           </div>
@@ -327,16 +387,16 @@ const styles = {
   },
   loading: {
     textAlign: 'center',
-    padding: '40px',
+    padding: '100px',
     fontSize: '18px',
     color: '#666',
   },
   error: {
-    padding: '15px',
+    padding: '20px',
     backgroundColor: '#fee',
     color: '#c33',
     borderRadius: '6px',
-    marginBottom: '20px',
+    textAlign: 'center',
   },
   productSection: {
     display: 'grid',

@@ -20,6 +20,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -41,12 +43,16 @@ public class RestockNotificationService {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND));
 
-        // 중복 신청 체크
-        if (restockNotificationRepository.existsByUserAndProduct(user, product)) {
+        // 기존 알림 신청 확인
+        Optional<RestockNotification> existingNotification =
+                restockNotificationRepository.findByProductIdAndUserId(product.getId(), user.getId());
+
+        if (existingNotification.isPresent()) {
+            // 이미 신청된 알림이 있으면 중복 에러
             throw new BadRequestException(ErrorCode.DUPLICATE_NOTIFICATION_REQUEST);
         }
 
-        // 알림 신청 생성
+        // 새로운 알림 신청 생성
         RestockNotification notification = RestockNotification.builder()
                 .user(user)
                 .product(product)
@@ -77,7 +83,6 @@ public class RestockNotificationService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND));
 
-        // 수정: findByUser 대신 findByUserId 사용
         Seller seller = sellerRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SELLER_NOT_FOUND));
 
