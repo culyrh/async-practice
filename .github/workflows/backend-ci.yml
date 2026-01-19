@@ -20,16 +20,17 @@ jobs:
         working-directory: ./backend
 
     services:
-      postgres:
-        image: postgres:15
+      mysql:
+        image: mysql:8.0
         env:
-          POSTGRES_DB: ecommerce_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          MYSQL_DATABASE: ecommerce_test
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: root
         ports:
-          - 5432:5432
+          - 3306:3306
         options: >-
-          --health-cmd pg_isready
+          --health-cmd="mysqladmin ping -h localhost -ptest"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -61,10 +62,10 @@ jobs:
       - name: Build with Gradle
         env:
           DB_HOST: localhost
-          DB_PORT: 5432
+          DB_PORT: 3306
           DB_NAME: ecommerce_test
-          DB_USERNAME: postgres
-          DB_PASSWORD: postgres
+          DB_USERNAME: test
+          DB_PASSWORD: test
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           JWT_SECRET: test-secret-key-minimum-256-bits-long-for-hs256-algorithm-testing
@@ -73,10 +74,10 @@ jobs:
       - name: Run tests
         env:
           DB_HOST: localhost
-          DB_PORT: 5432
+          DB_PORT: 3306
           DB_NAME: ecommerce_test
-          DB_USERNAME: postgres
-          DB_PASSWORD: postgres
+          DB_USERNAME: test
+          DB_PASSWORD: test
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           JWT_SECRET: test-secret-key-minimum-256-bits-long-for-hs256-algorithm-testing
