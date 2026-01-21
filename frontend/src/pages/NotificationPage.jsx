@@ -57,8 +57,17 @@ function NotificationPage() {
         }
         break;
       case 'RESTOCK':
-        // 재입고 알림은 상품 상세로 이동
-        navigate('/restock');
+        // 재입고 알림은 상품 상세로 이동 (알림 내용에서 상품 ID 추출)
+        // 알림 content에서 상품 ID를 찾음 (예: "상품 ID: 123" 형식 또는 "#123" 형식)
+        const productIdMatch = notification.content.match(/상품\\s*(?:ID)?[:\\s#]*(\\d+)/i) || 
+                               notification.content.match(/#(\\d+)/) ||
+                               notification.content.match(/(\\d+)/);
+        if (productIdMatch && productIdMatch[1]) {
+          navigate(`/products/${productIdMatch[1]}`);
+        } else {
+          // ID를 찾지 못한 경우 재입고 페이지로 이동
+          navigate('/restock');
+        }
         break;
       case 'COUPON_ISSUED':
         // 쿠폰 페이지로 이동
@@ -88,7 +97,7 @@ function NotificationPage() {
       RESTOCK: '재입고 알림',
       COUPON_ISSUED: '쿠폰 발급',
     };
-    return labels[type] || '알림';
+    return labels[type] || 'ì•Œë¦¼';
   };
 
   const formatDate = (dateString) => {
